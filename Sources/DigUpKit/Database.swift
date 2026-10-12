@@ -1,7 +1,12 @@
 import Foundation
+#if canImport(SQLite3)
 import SQLite3
+#else
+import CSQLite
+#endif
 
-/// A thin wrapper over the system SQLite (3.51 on macOS 26, FTS5 built in). One connection, used from one thread.
+/// A thin wrapper over the system SQLite (3.51 on macOS 26, 3.45 on Ubuntu 24.04; FTS5 built in on both). One
+/// connection, used from one thread.
 public final class Database {
     public struct Failure: Error, CustomStringConvertible {
         public let message: String

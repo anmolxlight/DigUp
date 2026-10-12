@@ -1,5 +1,7 @@
+#if canImport(CoreServices)
 import CoreGraphics
 import CoreServices
+#endif
 import Foundation
 
 /// Seconds of indexing per unit, measured 2026-10-07 on an M4 Pro with llama.cpp (Q8_0), reading files while the
@@ -131,17 +133,27 @@ public enum Estimator {
     }
 
     static func pages(of path: String) -> Int {
+        #if canImport(CoreServices)
         if let pages = spotlight(path, kMDItemNumberOfPages), pages > 0 { return Int(pages) }
         return CGPDFDocument(URL(fileURLWithPath: path) as CFURL)?.numberOfPages ?? 1
+        #else
+        // Linux has no Spotlight; pdfinfo reads the page count out of the trailer without rendering anything
+        // (~2 ms a file), which is what the Spotlight lookup saved.
+        return (try? PDFExtractor.document(URL(fileURLWithPath: path)).pages) ?? 1
+        #endif
     }
 
     static func duration(of path: String) -> Double {
+        #if canImport(CoreServices)
         if let seconds = spotlight(path, kMDItemDurationSeconds), seconds > 0 { return seconds }
+        #endif
         return MediaInfo.duration(of: URL(fileURLWithPath: path)) ?? 0
     }
 
+    #if canImport(CoreServices)
     private static func spotlight(_ path: String, _ attribute: CFString) -> Double? {
         guard let item = MDItemCreate(kCFAllocatorDefault, path as CFString) else { return nil }
         return (MDItemCopyAttribute(item, attribute) as? NSNumber)?.doubleValue
     }
+    #endif
 }

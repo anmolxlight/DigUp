@@ -1,8 +1,9 @@
 #!/bin/bash
 # Builds llama.cpp (MIT), the embedding runtime: the pinned build tag plus scripts/llama.cpp-no-logits.patch, as static
 # libraries combined into Vendor/llama/lib/libllamacpp.a, with the headers in Vendor/llama/include (all out of git).
-# Metal shaders are embedded and compiled on first use, so no Metal toolchain is needed. CMake comes from PATH, or from
-# a venv in Vendor/ (needs uv). Does nothing when that build is already there; build.sh runs it every time.
+# On a Mac: Metal shaders are embedded and compiled on first use, so no Metal toolchain is needed. On Linux: a plain
+# CPU build (no Metal, no BLAS, no OpenMP — ggml's own threadpool). CMake comes from PATH, or from a venv in Vendor/
+# (needs uv). Does nothing when that build is already there; build.sh runs it every time.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 TAG=b11461   # the first tags with EmbeddingGemma 2 (text + vision + audio) are b11452+
@@ -12,7 +13,14 @@ TAG=b11461   # the first tags with EmbeddingGemma 2 (text + vision + audio) are 
 PATCH=scripts/llama.cpp-no-logits.patch
 SOURCE=Vendor/llama.cpp
 OUT=Vendor/llama
-STAMP="$TAG $(shasum -a 256 "$PATCH" | cut -c1-12)"
+if [[ "$(uname)" == Darwin ]]; then
+  sha256() { shasum -a 256 "$1"; }
+  CPUS=$(sysctl -n hw.ncpu)
+else
+  sha256() { sha256sum "$1"; }
+  CPUS=$(nproc)
+fi
+STAMP="$TAG $(sha256 "$PATCH" | cut -c1-12)"
 if [[ -f "$OUT/lib/libllamacpp.a" && "$(cat "$OUT/BUILD" 2>/dev/null)" == "$STAMP" ]]; then
   exit 0
 fi
@@ -40,18 +48,34 @@ if ! command -v cmake > /dev/null; then
 fi
 GENERATOR=$(command -v ninja > /dev/null && echo Ninja || echo "Unix Makefiles")
 # Only the libraries: no tools, no server, nothing downloaded at build time.
-cmake -S "$SOURCE" -B Vendor/llama-build -G "$GENERATOR" -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 \
-  -DBUILD_SHARED_LIBS=OFF -DGGML_METAL=ON -DGGML_METAL_EMBED_LIBRARY=ON -DGGML_NATIVE=OFF -DLLAMA_BUILD_MTMD=ON \
+if [[ "$(uname)" == Darwin ]]; then
+  BACKENDS=(-DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 -DGGML_METAL=ON -DGGML_METAL_EMBED_LIBRARY=ON)
+else
+  # No GPU backend on Linux: the CPU build. OpenMP off so the static library needs no libgomp at link time.
+  BACKENDS=(-DGGML_METAL=OFF -DGGML_BLAS=OFF -DGGML_OPENMP=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON)
+fi
+cmake -S "$SOURCE" -B Vendor/llama-build -G "$GENERATOR" -DCMAKE_BUILD_TYPE=Release "${BACKENDS[@]}" \
+  -DBUILD_SHARED_LIBS=OFF -DGGML_NATIVE=OFF -DLLAMA_BUILD_MTMD=ON \
   -DLLAMA_BUILD_COMMON=OFF -DLLAMA_BUILD_TOOLS=OFF -DLLAMA_BUILD_SERVER=OFF -DLLAMA_BUILD_EXAMPLES=OFF \
   -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_APP=OFF -DLLAMA_BUILD_UI=OFF -DLLAMA_OPENSSL=OFF > /dev/null
-cmake --build Vendor/llama-build --config Release -j "$(sysctl -n hw.ncpu)" --target llama mtmd > /dev/null
+cmake --build Vendor/llama-build --config Release -j "$CPUS" --target llama mtmd > /dev/null
 
 B=Vendor/llama-build
 mkdir -p "$OUT/lib" "$OUT/include"
-xcrun libtool -static -no_warning_for_no_symbols -o "$OUT/lib/libllamacpp.a" \
-  $B/src/libllama.a $B/tools/mtmd/libmtmd.a $B/ggml/src/libggml.a $B/ggml/src/libggml-base.a \
-  $B/ggml/src/libggml-cpu.a $B/ggml/src/ggml-metal/libggml-metal.a $B/ggml/src/ggml-blas/libggml-blas.a \
-  $B/vendor/hash/libvendor-hash.a
+PARTS=($B/src/libllama.a $B/tools/mtmd/libmtmd.a $B/ggml/src/libggml.a $B/ggml/src/libggml-base.a
+       $B/ggml/src/libggml-cpu.a $B/vendor/hash/libvendor-hash.a)
+if [[ "$(uname)" == Darwin ]]; then
+  PARTS+=($B/ggml/src/ggml-metal/libggml-metal.a $B/ggml/src/ggml-blas/libggml-blas.a)
+  xcrun libtool -static -no_warning_for_no_symbols -o "$OUT/lib/libllamacpp.a" "${PARTS[@]}"
+else
+  # `ar` has no libtool-style merge: an MRI script does it. Member names repeat between the parts, so thin-archive
+  # extraction isn't safe; ADDLIB copies each member in.
+  rm -f "$OUT/lib/libllamacpp.a"
+  { echo "create $OUT/lib/libllamacpp.a"
+    for part in "${PARTS[@]}"; do echo "addlib $part"; done
+    echo save; echo end; } | ar -M
+  ranlib "$OUT/lib/libllamacpp.a"
+fi
 cp "$SOURCE/include/llama.h" "$SOURCE"/ggml/include/*.h "$SOURCE/tools/mtmd/mtmd.h" "$SOURCE/tools/mtmd/mtmd-helper.h" \
   "$OUT/include/"
 # The build, for logs and `digup status` (indexes record LlamaEmbedder.vectorVersion, not this). SwiftPM doesn't see a

@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(UniformTypeIdentifiers)
 import UniformTypeIdentifiers
+#endif
 
 /// A file the crawler decided to index.
 public struct Candidate: Sendable {
@@ -27,8 +29,13 @@ public enum Crawler {
     public static func crawl(_ roots: [URL], options: IndexOptions) -> CrawlReport {
         let fm = FileManager.default
         let home = fm.homeDirectoryForCurrentUser.path
+        // Linux Foundation has only the portable keys; packages, content types and iCloud are a Mac's.
+        #if os(macOS)
         let keys: [URLResourceKey] = [.isDirectoryKey, .isPackageKey, .contentTypeKey, .isUbiquitousItemKey,
                                       .ubiquitousItemDownloadingStatusKey]
+        #else
+        let keys: [URLResourceKey] = [.isDirectoryKey]
+        #endif
         var report = CrawlReport()
         var projectRoots = Set<String>()
         var repos = GitRepos()
@@ -53,7 +60,8 @@ public enum Crawler {
                                              errorHandler: { _, _ in true }) else { continue }
             func visit(_ url: URL) {
                 let values = try? url.resourceValues(forKeys: Set(keys))
-                if values?.isDirectory == true, values?.isPackage != true {
+                let isPackage = Files.isPackage(values)
+                if values?.isDirectory == true, !isPackage {
                     if let reason = Rules.skipReason(forFolder: url, home: home, excluded: skips)
                         ?? (options.code ? Rules.codeSkipReason(forFolder: url) : nil) {
                         walker.skipDescendants()
@@ -65,12 +73,12 @@ public enum Crawler {
                     }
                     return
                 }
-                if values?.isPackage == true {
+                if isPackage {
                     report.skipped["app or bundle", default: 0] += 1
                     return
                 }
                 let classification = options.code ? Rules.classifyCode(url, options: options)
-                    : Rules.classify(url, type: values?.contentType, options: options)
+                    : Rules.classify(url, type: Files.contentType(of: url, values), options: options)
                 switch classification {
                 case .ignore:
                     report.skipped["other type", default: 0] += 1
@@ -83,8 +91,13 @@ public enum Crawler {
                         return
                     }
                     // Reading a dataless placeholder (iCloud "Optimize Mac Storage", File Providers) downloads it.
+                    // Linux has neither; there nothing is a placeholder.
+                    #if os(macOS)
                     let dataless = info.st_flags & 0x4000_0000 != 0  // SF_DATALESS
                     let inCloud = values?.isUbiquitousItem == true && values?.ubiquitousItemDownloadingStatus != .current
+                    #else
+                    let (dataless, inCloud) = (false, false)
+                    #endif
                     if dataless || inCloud {
                         report.skipped["in the cloud, not downloaded", default: 0] += 1
                         return
@@ -103,7 +116,7 @@ public enum Crawler {
                         }
                     }
                     guard foundPaths.insert(url.path).inserted else { return }
-                    let mtime = Double(info.st_mtimespec.tv_sec) + Double(info.st_mtimespec.tv_nsec) / 1e9
+                    let mtime = Files.modified(info)
                     found.append(Candidate(path: url.path, kind: kind, size: Int64(info.st_size), mtime: mtime,
                                            inode: UInt64(info.st_ino), device: UInt64(bitPattern: Int64(info.st_dev))))
                 }
@@ -184,8 +197,7 @@ struct GitRepos {
     /// A folder the walk goes into: a repo of its own when it has a .git folder (a submodule's or a worktree's .git
     /// file keeps it out of the walk: `Rules.codeSkipReason`).
     mutating func enter(_ path: String) {
-        var isFolder: ObjCBool = false
-        if FileManager.default.fileExists(atPath: path + "/.git", isDirectory: &isFolder), isFolder.boolValue {
+        if Files.isFolder(path + "/.git") == true {
             files[path] = GitFiles.list(path)
             repoOf[path] = path
         }
@@ -213,6 +225,7 @@ enum GitFiles {
     /// A git that's really installed (Xcode's, the command line tools', Homebrew's). /usr/bin/git on a Mac without the
     /// developer tools only asks to install them.
     static let git: String? = {
+        #if os(macOS)
         var candidates: [String] = []
         if let developer = try? FileManager.default.destinationOfSymbolicLink(atPath: "/var/db/xcode_select_link") {
             candidates.append(developer + "/usr/bin/git")
@@ -221,6 +234,9 @@ enum GitFiles {
                        "/Applications/Xcode.app/Contents/Developer/usr/bin/git", "/opt/homebrew/bin/git",
                        "/usr/local/bin/git"]
         return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
+        #else
+        return Tool.find("git", "/usr/bin/git", "/usr/local/bin/git")
+        #endif
     }()
 
     /// Paths relative to `repo`, or nil when git can't say (no git, not a repo, an error).

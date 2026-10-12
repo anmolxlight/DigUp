@@ -1,0 +1,6 @@
+// Linux has no SQLite3 module in the SDK: this is the system libsqlite3 (3.45 on Ubuntu 24.04, FTS5 and JSON1 built in).
+module CSQLite [system] {
+    header "shim.h"
+    link "sqlite3"
+    export *
+}

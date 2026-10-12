@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(UniformTypeIdentifiers)
 import UniformTypeIdentifiers
+#endif
 
 public enum Classification: Equatable, Sendable {
     case index(FileKind)
@@ -34,7 +36,9 @@ public enum Rules {
         "metal", "glsl", "hlsl", "wgsl", "cu", "pyi", "pyc",
     ]
 
-    static let screenshotPrefixes = ["Screenshot", "Screen Shot", "CleanShot", "SCR-"]
+    /// "Screenshot" also covers GNOME's "Screenshot from 2026-10-12 14-30-00.png"; "Spectacle"/"Screenshot_"
+    /// are KDE's and Android's.
+    static let screenshotPrefixes = ["Screenshot", "Screen Shot", "CleanShot", "SCR-", "Spectacle"]
 
     // MARK: Code (the code index, `IndexOptions.code`)
 
@@ -98,10 +102,7 @@ public enum Rules {
     static func codeSkipReason(forFolder url: URL) -> String? {
         if codeSkippedFolderNames.contains(url.lastPathComponent) { return "vendored or built code" }
         // A submodule or a worktree (".git" is a file there): someone else's code, or a copy of a repo's own.
-        var isFolder: ObjCBool = false
-        if FileManager.default.fileExists(atPath: url.path + "/.git", isDirectory: &isFolder), !isFolder.boolValue {
-            return "submodule or worktree"
-        }
+        if let folder = Files.isFolder(url.path + "/.git"), !folder { return "submodule or worktree" }
         return nil
     }
 
@@ -137,8 +138,11 @@ public enum Rules {
     }
 
     /// macOS marks screenshots with an extended attribute that survives moves and copies; names are the fallback.
+    /// Linux has no such mark (GNOME and KDE only name the file), so there it's the names alone.
     public static func isScreenshot(_ url: URL) -> Bool {
+        #if os(macOS)
         if getxattr(url.path, "com.apple.metadata:kMDItemIsScreenCapture", nil, 0, 0, 0) > 0 { return true }
+        #endif
         let name = url.lastPathComponent
         return screenshotPrefixes.contains { name.hasPrefix($0) }
     }

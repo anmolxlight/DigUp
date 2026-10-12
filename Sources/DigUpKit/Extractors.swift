@@ -1,9 +1,19 @@
+#if canImport(AppKit)
 import AppKit
-import Foundation
 import ImageIO
 import PDFKit
 import UniformTypeIdentifiers
 import Vision
+#endif
+import Foundation
+
+/// What `OCR` reads and `ImageExtractor.write` writes. A Mac decodes once into a `CGImage` and passes it around;
+/// on Linux an image stays a file on disk, because every reader there (tesseract, ffmpeg) takes a path.
+#if canImport(AppKit)
+typealias SourceImage = CGImage
+#else
+typealias SourceImage = URL
+#endif
 
 enum ExtractError: Error, CustomStringConvertible {
     case unreadable(String)
@@ -32,6 +42,7 @@ enum ImageExtractor {
         let taken: String?   // EXIF DateTimeOriginal, as written by the camera
     }
 
+    #if canImport(AppKit)
     /// Writes a downscaled copy for the model. ImageIO decodes straight to the thumbnail size, so a 48 MP photo never
     /// gets decoded at full resolution. HEIC, RAW, WebP and friends all work.
     static func prepare(_ url: URL, maxPixel: Int, minSide: Int, to folder: URL, png: Bool) throws -> Prepared {
@@ -69,9 +80,11 @@ enum ImageExtractor {
         CGImageDestinationAddImage(destination, image, properties)
         guard CGImageDestinationFinalize(destination) else { throw ExtractError.unreadable("can't encode image") }
     }
+    #endif
 }
 
 enum OCR {
+    #if canImport(Vision)
     /// Apple Vision text recognition: ~0.1 s for a 1440×900 screenshot on an M4 Pro.
     /// Runs on the full-resolution image; small UI text is what screenshots are full of.
     /// Accurate beats fast here: fast saved only 8% of screenshot indexing time once OCR overlapped with embedding,
@@ -91,6 +104,7 @@ enum OCR {
         request.recognitionLevel = .accurate
         return (try? request.supportedRecognitionLanguages())?.contains { $0.hasPrefix("ar") } ?? false
     }()
+    #endif
 }
 
 enum PDFExtractor {
@@ -104,6 +118,7 @@ enum PDFExtractor {
         var garbled: String?
     }
 
+    #if canImport(PDFKit)
     /// Reads the pages in `range(pageCount)` (0-based). Pages with real text become text; scans and slides are
     /// rendered. Text layers PDFKit reads garbled are replaced: by OCR where letters were lost (Arabic ligatures), by
     /// the rendered page where the words came out in glyph order (Bengali, which OCR can't read). On the multilingual
@@ -156,26 +171,35 @@ enum PDFExtractor {
         return page.thumbnail(of: NSSize(width: side, height: side), for: .mediaBox)
             .cgImage(forProposedRect: nil, context: nil, hints: nil)
     }
+    #endif
 }
 
 enum DocExtractor {
-    /// Plain text from txt/md directly, HTML by stripping tags, and rtf/docx/doc/odt through the Cocoa text system.
+    /// Plain text from txt/md directly, HTML by stripping tags, and rtf/docx/doc/odt through the Cocoa text system
+    /// (on Linux through pandoc and catdoc: `convert`).
     /// (Cocoa's HTML import runs WebKit and must be on the main thread; the app indexes on a background queue.)
     static func text(of url: URL) throws -> String {
         let ext = url.pathExtension.lowercased()
+        switch ext {
+        case "html", "htm": return plainText(fromHTML: try readText(url))
+        case "docx", "doc", "odt", "rtf": break
+        default: return try readText(url)
+        }
+        #if canImport(AppKit)
         let type: NSAttributedString.DocumentType
         switch ext {
         case "docx": type = .officeOpenXML
         case "doc": type = .docFormat
         case "odt": type = .openDocument
-        case "rtf": type = .rtf
-        case "html", "htm": return plainText(fromHTML: try readText(url))
-        default: return try readText(url)
+        default: type = .rtf
         }
         return try NSAttributedString(url: url, options: [.documentType: type], documentAttributes: nil).string
+        #else
+        return try convert(url, ext)
+        #endif
     }
 
-    private static func readText(_ url: URL) throws -> String {
+    static func readText(_ url: URL) throws -> String {
         var encoding = String.Encoding.utf8
         if let text = try? String(contentsOf: url, usedEncoding: &encoding) { return text }
         return try String(contentsOf: url, encoding: .isoLatin1)
@@ -221,7 +245,9 @@ enum DocExtractor {
     /// Splits text into ~`size`-character pieces (~450 tokens) that overlap a little, breaking at whitespace.
     static func chunks(_ text: String, size: Int = 1800, overlap: Int = 200, limit: Int) -> [String] {
         let clean = text
-            .replacingOccurrences(of: #"[ \t\u{00A0}]+"#, with: " ", options: .regularExpression)
+            // The no-break space goes in as the character itself: "\u{00A0}" inside the pattern is a Swift escape
+            // ICU doesn't know, and Linux's regex engine rejects the whole pattern over it (macOS lets it pass).
+            .replacingOccurrences(of: "[ \\t\u{00A0}]+", with: " ", options: .regularExpression)
             .replacingOccurrences(of: #"\n\s*\n\s*\n+"#, with: "\n\n", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         var chunks: [String] = []

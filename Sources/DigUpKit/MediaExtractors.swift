@@ -1,5 +1,7 @@
+#if canImport(AVFoundation)
 @preconcurrency import AVFoundation
 import CoreGraphics
+#endif
 import Foundation
 
 private final class ResultBox<T>: @unchecked Sendable {
@@ -28,6 +30,7 @@ struct MediaPiece: Sendable {
 enum AudioExtractor {
     static let sampleRate = 16_000.0
 
+    #if canImport(AVFoundation)
     /// Decodes audio (a file, or a video's soundtrack) to 16 kHz mono and writes `window`-second WAV pieces `hop`
     /// seconds apart, skipping silent ones. One model input ignores anything past 30 s, so windows stay ≤ 30 s.
     /// Streams: memory stays at one window, even for a 3-hour podcast.
@@ -45,6 +48,24 @@ enum AudioExtractor {
         reader.add(output)
         guard reader.startReading() else { throw reader.error ?? ExtractError.unreadable("can't read audio") }
 
+        let sliced = try slice(window: window, hop: hop, minimum: minimum, to: folder) {
+            guard let sampleBuffer = output.copyNextSampleBuffer() else { return nil }
+            guard let block = CMSampleBufferGetDataBuffer(sampleBuffer) else { return [] }
+            let length = CMBlockBufferGetDataLength(block)
+            var chunk = [Int16](repeating: 0, count: length / 2)
+            _ = chunk.withUnsafeMutableBytes { CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: length,
+                                                                          destination: $0.baseAddress!) }
+            return chunk
+        }
+        if reader.status == .failed { throw reader.error ?? ExtractError.unreadable("audio decoding failed") }
+        return (sliced.pieces, duration.isFinite ? duration : Double(sliced.samples) / sampleRate)
+    }
+    #endif
+
+    /// The windowing itself, which both platforms share: `next` hands over 16 kHz mono PCM until there is no more
+    /// (an empty array means "nothing this time, keep going"). Memory stays at one window.
+    static func slice(window: Double, hop: Double, minimum: Double, to folder: URL,
+                      next: () throws -> [Int16]?) throws -> (pieces: [MediaPiece], samples: Int) {
         let windowSamples = Int(window * sampleRate), hopSamples = Int(hop * sampleRate)
         var buffer: [Int16] = []
         var offset = 0   // sample index of buffer[0] in the file
@@ -57,12 +78,7 @@ enum AudioExtractor {
             pieces.append(MediaPiece(path: out.path, start: Double(offset) / sampleRate,
                                      end: Double(offset + count) / sampleRate))
         }
-        while let sampleBuffer = output.copyNextSampleBuffer() {
-            guard let block = CMSampleBufferGetDataBuffer(sampleBuffer) else { continue }
-            let length = CMBlockBufferGetDataLength(block)
-            var chunk = [Int16](repeating: 0, count: length / 2)
-            _ = chunk.withUnsafeMutableBytes { CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: length,
-                                                                          destination: $0.baseAddress!) }
+        while let chunk = try next() {
             buffer.append(contentsOf: chunk)
             while buffer.count >= windowSamples {
                 try emit(windowSamples)
@@ -70,11 +86,10 @@ enum AudioExtractor {
                 offset += hopSamples
             }
         }
-        if reader.status == .failed { throw reader.error ?? ExtractError.unreadable("audio decoding failed") }
         // The tail: new audio beyond the previous window's overlap, or the whole file if it was shorter than a window.
         let alreadyCovered = offset == 0 ? 0 : windowSamples - hopSamples
         if buffer.count - alreadyCovered >= Int(minimum * sampleRate) { try emit(buffer.count) }
-        return (pieces, duration.isFinite ? duration : Double(offset + buffer.count) / sampleRate)
+        return (pieces, offset + buffer.count)
     }
 
     private static func rms(_ samples: ArraySlice<Int16>) -> Double {
@@ -99,6 +114,7 @@ enum AudioExtractor {
 }
 
 enum VideoExtractor {
+    #if canImport(AVFoundation)
     /// Samples a frame every `interval` seconds and keeps one per shot: a frame that looks like the previous kept one
     /// (8×8 average hash within 4 bits) only extends it. Screen recordings and lectures shrink a lot.
     /// Google's Video Moments Finder also matches queries against per-frame vectors.
@@ -149,6 +165,13 @@ enum VideoExtractor {
             return true
         }
         guard drawn else { return 0 }
+        return averageHash(pixels)
+    }
+    #endif
+
+    /// The 8×8 average hash of a frame, from its 64 grey pixels: bits for the pixels above the mean.
+    static func averageHash(_ pixels: [UInt8]) -> UInt64 {
+        guard !pixels.isEmpty else { return 0 }
         let mean = pixels.reduce(0) { $0 + Int($1) } / pixels.count
         var hash: UInt64 = 0
         for (index, pixel) in pixels.enumerated() where Int(pixel) > mean { hash |= 1 << UInt64(index) }
@@ -159,7 +182,11 @@ enum VideoExtractor {
 enum MediaInfo {
     /// Duration from the file itself, for when Spotlight hasn't indexed it yet.
     static func duration(of url: URL) -> Double? {
+        #if canImport(AVFoundation)
         let seconds = try? runBlocking { try await AVURLAsset(url: url).load(.duration).seconds }
         return seconds.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
+        #else
+        return probe(url).duration
+        #endif
     }
 }

@@ -21,7 +21,7 @@ let usage = """
       digup worker [--text-only]              the model as a process (JSON lines; the app's query encoder)
 
     Options:
-      --index DIR          index folder (default: ~/Library/Application Support/DigUp/index.noindex)
+      --index DIR          index folder (default: \(AppPaths.supportHint)/index.noindex)
       --code               estimate, index or show the code index of these folders (code.sqlite in the index
                            folder): source files, their repos' docs and notebooks, minus what git ignores
       --kind K,K           screenshot, image, pdf, doc, audio, video
@@ -36,7 +36,7 @@ let usage = """
       --code-stretch N     characters a stretch of code holds at most (default 1800; 1200 and 3600 lost on the evals)
 
     The model: EmbeddingGemma 2 on llama.cpp, from $DIGUP_MODELS (only there, when set), else
-    ~/Library/Application Support/DigUp/Models or the Hugging Face cache. DIGUP_WORKER_DIR=worker uses the
+    \(AppPaths.supportHint)/Models or the Hugging Face cache. DIGUP_WORKER_DIR=worker uses the
     mlx-vlm reference worker instead (evals).
     """
 
@@ -77,8 +77,10 @@ struct Arguments {
     }
 
     var indexFolder: URL {
-        URL(fileURLWithPath: ((values["--index"] ?? "~/Library/Application Support/DigUp/index.noindex")
-            as NSString).expandingTildeInPath).standardizedFileURL
+        guard let chosen = values["--index"] else {
+            return AppPaths.support.appendingPathComponent("index.noindex").standardizedFileURL
+        }
+        return URL(fileURLWithPath: (chosen as NSString).expandingTildeInPath).standardizedFileURL
     }
 
     /// `--code`: the code index, not the main one.
@@ -105,7 +107,7 @@ struct Arguments {
         return try positional.map {
             let url = Self.folderURL($0)
             guard Self.isFolder(url) else { throw CLIError("not a folder: \($0)") }
-            guard Self.isReadable(url) else { throw CLIError("can't read \($0) (macOS privacy settings?)") }
+            guard Self.isReadable(url) else { throw CLIError("can't read \($0)") }
             return url
         }
     }
@@ -115,8 +117,8 @@ struct Arguments {
     }
 
     static func isFolder(_ url: URL) -> Bool {
-        var isFolder: ObjCBool = false
-        return FileManager.default.fileExists(atPath: url.path, isDirectory: &isFolder) && isFolder.boolValue
+        var info = stat()
+        return stat(url.path, &info) == 0 && (info.st_mode & S_IFMT) == S_IFDIR
     }
 
     /// The folder can be listed. One that macOS won't let us read (Files and Folders privacy) looks empty to a crawl,

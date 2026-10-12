@@ -1,0 +1,11 @@
+// The same headers as Sources/CLlama, without the Apple frameworks: on Linux llama.cpp is a plain CPU build.
+module CLlama [system] {
+    header "../../Vendor/llama/include/llama.h"
+    header "../../Vendor/llama/include/mtmd.h"
+    header "../../Vendor/llama/include/mtmd-helper.h"
+    header "../../Vendor/llama/include/llama-build.h"
+    link "llamacpp"
+    link "stdc++"
+    link "m"
+    export *
+}
