@@ -1,6 +1,6 @@
 #!/bin/bash
 # Builds the testbed: a deletable sandbox for trying DigUp on realistic files.
-#   real/       APFS clones of a seeded random sample of your own files (no extra disk space)
+#   real/       APFS clones of a seeded random sample of your own files (no extra disk space; reflinks or copies on Linux)
 #   synthetic/  generated media with known content: the ground truth for evals
 #   traps/      cases the crawler must get right (TypeScript .ts, code projects, datasets, icons, bundles, odd names)
 #   code/       small git repos with known functions, for code search (evals/code.json)
@@ -12,6 +12,21 @@ TB="${1:-$HOME/DigUpTestbed}"
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 command -v ffmpeg >/dev/null || { echo "needs ffmpeg (brew install ffmpeg)"; exit 1; }
+# What differs on Linux: copies are reflinks where the file system has them (plain copies elsewhere), there's no
+# screenshot mark (synthetic/screenshots/ counts as a Screenshots folder, as GNOME and KDE save them), and the Swift
+# generators are make_files.py (needs uv; scripts/testbed/make_files.py says what it draws with).
+if [[ "$(uname)" == Darwin ]]; then
+  clone() { cp -c "$@"; }
+  mark_screenshot() { xattr -w com.apple.metadata:kMDItemIsScreenCapture 1 "$1"; }
+  shrink_png() { sips -s format png -Z "$1" "$2" --out "$3" >/dev/null; }
+  generate() { swift "$REPO/scripts/testbed/make_$1.swift" "$2" >/dev/null; }
+else
+  command -v uv >/dev/null || { echo "needs uv (https://docs.astral.sh/uv/)"; exit 1; }
+  clone() { cp --reflink=auto "$@"; }
+  mark_screenshot() { :; }
+  shrink_png() { ffmpeg -loglevel error -y -i "$2" -vf "scale=$1:$1:force_original_aspect_ratio=decrease" "$3"; }
+  generate() { uv run --no-project --with pillow --with pypdf python -I "$REPO/scripts/testbed/make_files.py" "$1" "$2" >/dev/null; }
+fi
 [[ -e "$TB" ]] && { echo "$TB already exists; delete it first (rm -rf \"$TB\")"; exit 1; }
 mkdir -p "$TB"
 
@@ -23,9 +38,9 @@ S="$TB/synthetic"
 "$REPO/scripts/testbed/make_media.sh" "$S" >/dev/null
 rm -rf "$S/audio_trunc" "$S/audio/bench_60s.wav" "$S/video/bench_45s.mp4" "$S/video"/seg_*.mp4
 mv "$S/shots" "$S/screenshots"
-for f in "$S/screenshots"/*.png; do xattr -w com.apple.metadata:kMDItemIsScreenCapture 1 "$f"; done
-swift "$REPO/scripts/testbed/make_docs.swift" "$S/docs" >/dev/null
-swift "$REPO/scripts/testbed/make_long.swift" "$S/long" >/dev/null   # deep pages: read after the first pass
+for f in "$S/screenshots"/*.png; do mark_screenshot "$f"; done
+generate docs "$S/docs"
+generate long "$S/long"   # deep pages: read after the first pass
 "$REPO/scripts/testbed/make_lang.sh" "$S/lang"   # Bengali and Arabic (evals/multilingual.json)
 
 echo "== traps/ =="
@@ -38,29 +53,29 @@ ffmpeg -loglevel error -i "$S/video/penguin_zebra_parrot_18s.mp4" -c copy -f mpe
 # A code project: only its screenshot should be indexed.
 P="$T/MyProject"; mkdir -p "$P/.git" "$P/assets" "$P/node_modules/lib" "$P/screenshots"
 echo '{"name": "my-project"}' > "$P/package.json"
-cp -c "$S/img/Animals-Owl.jpg" "$P/assets/hero.jpg"
-cp -c "$S/img/Animals-Eagle.jpg" "$P/node_modules/lib/logo.jpg"
-cp -c -p "$S/screenshots/shot_weather.png" "$P/screenshots/Screenshot 2026-10-02 at 8.15.40 AM.png"
+clone "$S/img/Animals-Owl.jpg" "$P/assets/hero.jpg"
+clone "$S/img/Animals-Eagle.jpg" "$P/node_modules/lib/logo.jpg"
+clone -p "$S/screenshots/shot_weather.png" "$P/screenshots/Screenshot 2026-10-02 at 8.15.40 AM.png"
 # node_modules outside a project, a hidden folder, and an app bundle: all skipped.
 mkdir -p "$T/node_modules/pkg" "$T/.hidden" "$T/Fake.app/Contents/Resources"
-cp -c "$S/img/Nature-Leaf.jpg" "$T/node_modules/pkg/leaf.jpg"
-cp -c "$S/img/Nature-Zen.jpg" "$T/.hidden/zen.jpg"
-cp -c "$S/img/Fun-Medal.jpg" "$T/Fake.app/Contents/Resources/medal.jpg"
+clone "$S/img/Nature-Leaf.jpg" "$T/node_modules/pkg/leaf.jpg"
+clone "$S/img/Nature-Zen.jpg" "$T/.hidden/zen.jpg"
+clone "$S/img/Fun-Medal.jpg" "$T/Fake.app/Contents/Resources/medal.jpg"
 # Icons below the 256 px minimum: skipped.
 mkdir -p "$T/icons"
-for px in 32 64 128; do sips -s format png -Z $px "$S/img/Sports-Target.jpg" --out "$T/icons/target-$px.png" >/dev/null; done
+for px in 32 64 128; do shrink_png $px "$S/img/Sports-Target.jpg" "$T/icons/target-$px.png"; done
 # A dataset: 600 machine-named clips in one folder -> the detector should flag it.
 mkdir -p "$T/dataset_clips"
 ffmpeg -loglevel error -f lavfi -i "sine=frequency=440:duration=1" -ac 1 -ar 16000 "$T/dataset_clips/clip_000000.wav"
-for i in $(seq -f "%06g" 1 599); do cp -c "$T/dataset_clips/clip_000000.wav" "$T/dataset_clips/clip_$i.wav"; done
+for i in $(seq -f "%06g" 1 599); do clone "$T/dataset_clips/clip_000000.wav" "$T/dataset_clips/clip_$i.wav"; done
 # Odd names: spaces, non-ASCII, and the narrow no-break space (U+202F) macOS puts before AM/PM.
 N="$T/Names with spaces & ünïcödé"; mkdir -p "$N"
-cp -c -p "$S/screenshots/shot_chat_meeting.png" "$N/Screenshot 2026-10-05 at 9.41.07"$' '"PM.png"
-cp -c "$S/img/Flowers-Sunflower.jpg" "$N/Café menü — 日本語.jpg"
+clone -p "$S/screenshots/shot_chat_meeting.png" "$N/Screenshot 2026-10-05 at 9.41.07"$' '"PM.png"
+clone "$S/img/Flowers-Sunflower.jpg" "$N/Café menü — 日本語.jpg"
 # Duplicates: the same photo under two names.
 mkdir -p "$T/duplicates"
-cp -c "$S/img/Animals-Penguin.jpg" "$T/duplicates/penguin.jpg"
-cp -c "$S/img/Animals-Penguin.jpg" "$T/duplicates/penguin copy.jpg"
+clone "$S/img/Animals-Penguin.jpg" "$T/duplicates/penguin.jpg"
+clone "$S/img/Animals-Penguin.jpg" "$T/duplicates/penguin copy.jpg"
 
 echo "== code/ =="
 python3 -I "$REPO/scripts/testbed/make_code.py" "$TB/code"

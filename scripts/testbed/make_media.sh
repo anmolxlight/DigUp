@@ -1,11 +1,13 @@
 #!/bin/bash
 # Builds the testbed's synthetic media (no personal data): macOS sample pictures, synthetic UI screenshots,
-# TTS speech clips, system sounds, and short videos cut into 6 s "moments".
+# TTS speech clips, system sounds, and short videos cut into 6 s "moments". (On Linux: Wikipedia photos of the same
+# subjects, Piper's voice and synthesized sounds instead.)
 #   ./make_media.sh <out_dir>
 set -euo pipefail
 M="${1:?usage: make_media.sh <out_dir>}"; HERE="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$M/img" "$M/shots" "$M/audio" "$M/audio_trunc" "$M/video"
 
+if [[ "$(uname)" == Darwin ]]; then
 for d in Animals Flowers Fun Instruments Nature Sports; do
   for f in "/Library/User Pictures/$d"/*.heic; do
     sips -s format jpeg -Z 768 "$f" --out "$M/img/$d-$(basename "$f" .heic).jpg" >/dev/null
@@ -16,11 +18,27 @@ DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}" swi
 
 # The default system voice renders silence from a script; Samantha works.
 say_wav() { say -v Samantha -o "$M/audio/tmp.aiff" "$2"; ffmpeg -loglevel error -y -i "$M/audio/tmp.aiff" -ac 1 -ar 16000 "$M/audio/$1.wav"; rm "$M/audio/tmp.aiff"; }
+else
+# Linux: photos of the same subjects instead of macOS's sample pictures, the screenshots drawn with Pillow, and Piper's
+# voice for `say` (make_files.py, speak.sh).
+PY=(uv run --no-project --with pillow --with pypdf python -I)
+"${PY[@]}" "$HERE/make_files.py" pictures "$M/img" >/dev/null
+"${PY[@]}" "$HERE/make_files.py" screenshots "$M/shots" >/dev/null
+say_wav() { "$HERE/speak.sh" en "$M/audio/$1.wav" "$2"; }
+fi
 say_wav speech_groceries "Don't forget to buy milk, eggs and bread on the way home tomorrow."
 say_wav speech_revenue "Our quarterly revenue grew by twenty percent, driven by strong sales in Europe."
 say_wav speech_flight_delay "Attention passengers. The flight to Tokyo has been delayed by two hours because of a storm."
 say_wav speech_cake_recipe "In this recipe we will bake a chocolate cake. First, preheat the oven to one hundred eighty degrees, then mix the flour, sugar and cocoa powder in a large bowl. Add the eggs, the melted butter and the milk, and stir until the batter is smooth. Pour it into a greased pan and bake for thirty five minutes. While the cake is baking, prepare the frosting by whipping cream with a little sugar and vanilla. When the cake has cooled down completely, spread the frosting on top and decorate it with fresh strawberries and some grated chocolate."
+if [[ "$(uname)" == Darwin ]]; then
 for s in Purr Frog Submarine Glass; do ffmpeg -loglevel error -y -i "/System/Library/Sounds/$s.aiff" -ac 1 -ar 16000 "$M/audio/sfx_$s.wav"; done
+else
+# No system sounds to copy: four short synthesized ones in their place (a purr, a croak, a sonar ping, a glass tap).
+for spec in "Purr:sine=f=27:d=1.2,volume=4" "Frog:sine=f=180:d=0.5,tremolo=f=30:d=0.9" \
+            "Submarine:sine=f=880:d=1.5,afade=t=out:st=0.1:d=1.4" "Glass:sine=f=2600:d=0.8,afade=t=out:st=0:d=0.8"; do
+  ffmpeg -loglevel error -y -f lavfi -i "${spec#*:}" -ac 1 -ar 16000 "$M/audio/sfx_${spec%%:*}.wav"
+done
+fi
 ffmpeg -loglevel error -y -stream_loop 5 -i "$M/audio/speech_cake_recipe.wav" -t 60 "$M/audio/bench_60s.wav"
 
 # Audio length-cap test clips
