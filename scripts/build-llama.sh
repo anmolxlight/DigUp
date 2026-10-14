@@ -21,6 +21,13 @@ else
   CPUS=$(nproc)
 fi
 STAMP="$TAG $(sha256 "$PATCH" | cut -c1-12)"
+# Linux: tuned for this machine's CPU (on ARM, its dot-product instructions: 1.5x faster indexing on a Neoverse N1).
+# LLAMA_PORTABLE=1 builds for any CPU of the architecture instead, for a build folder that runs on other machines.
+NATIVE=OFF
+if [[ "$(uname)" != Darwin && "${LLAMA_PORTABLE:-}" != 1 ]]; then
+  NATIVE=ON
+  STAMP+=" native"
+fi
 if [[ -f "$OUT/lib/libllamacpp.a" && "$(cat "$OUT/BUILD" 2>/dev/null)" == "$STAMP" ]]; then
   exit 0
 fi
@@ -55,7 +62,7 @@ else
   BACKENDS=(-DGGML_METAL=OFF -DGGML_BLAS=OFF -DGGML_OPENMP=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON)
 fi
 cmake -S "$SOURCE" -B Vendor/llama-build -G "$GENERATOR" -DCMAKE_BUILD_TYPE=Release "${BACKENDS[@]}" \
-  -DBUILD_SHARED_LIBS=OFF -DGGML_NATIVE=OFF -DLLAMA_BUILD_MTMD=ON \
+  -DBUILD_SHARED_LIBS=OFF -DGGML_NATIVE=$NATIVE -DLLAMA_BUILD_MTMD=ON \
   -DLLAMA_BUILD_COMMON=OFF -DLLAMA_BUILD_TOOLS=OFF -DLLAMA_BUILD_SERVER=OFF -DLLAMA_BUILD_EXAMPLES=OFF \
   -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_APP=OFF -DLLAMA_BUILD_UI=OFF -DLLAMA_OPENSSL=OFF > /dev/null
 cmake --build Vendor/llama-build --config Release -j "$CPUS" --target llama mtmd > /dev/null

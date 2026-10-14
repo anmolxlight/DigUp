@@ -138,10 +138,13 @@ public enum Rules {
     }
 
     /// macOS marks screenshots with an extended attribute that survives moves and copies; names are the fallback.
-    /// Linux has no such mark (GNOME and KDE only name the file), so there it's the names alone.
+    /// Linux has no such mark: there it's the names, and the folder GNOME (42 and later) and KDE save them in,
+    /// ~/Pictures/Screenshots (any folder of that name).
     public static func isScreenshot(_ url: URL) -> Bool {
         #if os(macOS)
         if getxattr(url.path, "com.apple.metadata:kMDItemIsScreenCapture", nil, 0, 0, 0) > 0 { return true }
+        #else
+        if url.deletingLastPathComponent().lastPathComponent.lowercased() == "screenshots" { return true }
         #endif
         let name = url.lastPathComponent
         return screenshotPrefixes.contains { name.hasPrefix($0) }

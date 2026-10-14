@@ -23,6 +23,14 @@ import Testing
         #expect(Rules.classify(file, type: .init(filenameExtension: "ts"), options: IndexOptions()) == .index(.video))
     }
 
+    #if os(Linux)
+    @Test func screenshotsAreNamedOrInAScreenshotsFolder() {
+        #expect(Rules.isScreenshot(URL(fileURLWithPath: "/home/me/Pictures/Screenshot From 2026-10-12 14-30-00.png")))
+        #expect(Rules.isScreenshot(URL(fileURLWithPath: "/home/me/Pictures/Screenshots/shot_weather.png")))
+        #expect(!Rules.isScreenshot(URL(fileURLWithPath: "/home/me/Pictures/Holiday/beach.png")))
+    }
+    #endif
+
     @Test func codeCanBeIncluded() {
         var options = IndexOptions()
         options.includeCode = true

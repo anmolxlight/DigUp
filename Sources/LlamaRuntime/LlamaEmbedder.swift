@@ -68,6 +68,11 @@ public final class LlamaEmbedder: Embedder {
         params.kv_unified = true   // each input may use the whole context, as in llama-embedding
         params.embeddings = true
         params.pooling_type = LLAMA_POOLING_TYPE_MEAN
+        #if os(Linux)
+        // The CPU does the work here (no Metal): all of it, not llama.cpp's default of four threads.
+        params.n_threads = Int32(ProcessInfo.processInfo.activeProcessorCount)
+        params.n_threads_batch = params.n_threads
+        #endif
         guard let context = llama_init_from_model(model, params) else {
             llama_model_free(model)
             throw WorkerError.failed("can't create a llama.cpp context")
@@ -77,6 +82,9 @@ public final class LlamaEmbedder: Embedder {
             var mediaParams = mtmd_context_params_default()
             mediaParams.use_gpu = true
             mediaParams.print_timings = false
+            #if os(Linux)
+            mediaParams.n_threads = Int32(ProcessInfo.processInfo.activeProcessorCount)
+            #endif
             mediaParams.warmup = true
             mediaParams.image_min_tokens = 1      // never rescale: images arrive at their final size (ImageSizing)
             mediaParams.image_max_tokens = 1120
