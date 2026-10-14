@@ -141,7 +141,7 @@ holds the queries ranking changes are measured with.
 
 ## Linux
 
-DigUp also runs on Linux (no GPU needed; tested on ARM64 Ubuntu 24.04): the same engine, the same index and the
+DigUp also runs on Linux (no GPU needed, and it uses one through Vulkan when there is; tested on ARM64 Ubuntu 24.04): the same engine, the same index and the
 same features, with a GTK 4 app in place of the Mac's. It's built from source; there's no package yet.
 
 **Dependencies** (Ubuntu 24.04 names; other distributions have the same tools):
@@ -153,13 +153,15 @@ sudo apt install cmake libgtk-4-dev libsqlite3-dev libcurl4-openssl-dev
 sudo apt install ffmpeg poppler-utils tesseract-ocr tesseract-ocr-eng pandoc catdoc libheif-examples dcraw
 # optional: more OCR languages, playing previews, opening at the page or moment, copying files, a desktop shortcut
 sudo apt install tesseract-ocr-ben tesseract-ocr-ara gstreamer1.0-libav libgtk-4-media-gstreamer mpv evince xclip wl-clipboard
+# optional: a GPU (NVIDIA, AMD or Intel, with its Vulkan driver) for faster indexing
+sudo apt install libvulkan-dev glslc spirv-headers
 ```
 
 **Build and test:**
 
 ```sh
 git clone https://github.com/ARahim3/DigUp && cd DigUp
-scripts/build-llama.sh            # llama.cpp, a plain CPU build (a few minutes)
+scripts/build-llama.sh            # llama.cpp: CPU, plus Vulkan if its packages are there (LLAMA_CPU_ONLY=1 skips it)
 swift build -c release && swift test
 ./build.sh                        # → build.noindex/linux/: digup, digup-app, digup.desktop
 ```
@@ -189,7 +191,7 @@ quit it and delete those and the build folder (and the launcher links above, and
 **What's different:** GTK 4 has no tray, so the status menu (indexing progress, Pause, Settings…) is the ☰ button in
 the search window and `digup-app --status`. Space opens a large preview window rather than Quick Look. Updates are
 checked daily against the same feed, but installed by rebuilding (`git pull && ./build.sh`). Text in pictures is
-read by Tesseract instead of Apple's text recognition, and indexing runs on the CPU, so the first pass takes longer
+read by Tesseract instead of Apple's text recognition, and without a GPU, indexing runs on the CPU, so the first pass takes longer
 than on a Mac. LINUX_PORT_NOTES.md has the details.
 
 ## FAQ

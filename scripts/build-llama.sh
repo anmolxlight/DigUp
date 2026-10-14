@@ -28,6 +28,14 @@ if [[ "$(uname)" != Darwin && "${LLAMA_PORTABLE:-}" != 1 ]]; then
   NATIVE=ON
   STAMP+=" native"
 fi
+# Linux: a GPU through Vulkan (NVIDIA, AMD, Intel) when its headers and shader compiler are there (libvulkan-dev,
+# glslc). The same build still runs without a GPU: llama.cpp then stays on the CPU. LLAMA_CPU_ONLY=1 leaves it out.
+VULKAN=OFF
+if [[ "$(uname)" != Darwin && "${LLAMA_CPU_ONLY:-}" != 1 ]] && pkg-config --exists vulkan 2>/dev/null \
+   && command -v glslc > /dev/null; then
+  VULKAN=ON
+  STAMP+=" vulkan"
+fi
 if [[ -f "$OUT/lib/libllamacpp.a" && "$(cat "$OUT/BUILD" 2>/dev/null)" == "$STAMP" ]]; then
   exit 0
 fi
@@ -58,8 +66,8 @@ GENERATOR=$(command -v ninja > /dev/null && echo Ninja || echo "Unix Makefiles")
 if [[ "$(uname)" == Darwin ]]; then
   BACKENDS=(-DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 -DGGML_METAL=ON -DGGML_METAL_EMBED_LIBRARY=ON)
 else
-  # No GPU backend on Linux: the CPU build. OpenMP off so the static library needs no libgomp at link time.
-  BACKENDS=(-DGGML_METAL=OFF -DGGML_BLAS=OFF -DGGML_OPENMP=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON)
+  # CPU, plus Vulkan when found above. OpenMP off so the static library needs no libgomp at link time.
+  BACKENDS=(-DGGML_METAL=OFF -DGGML_BLAS=OFF -DGGML_OPENMP=OFF -DGGML_VULKAN=$VULKAN -DCMAKE_POSITION_INDEPENDENT_CODE=ON)
 fi
 cmake -S "$SOURCE" -B Vendor/llama-build -G "$GENERATOR" -DCMAKE_BUILD_TYPE=Release "${BACKENDS[@]}" \
   -DBUILD_SHARED_LIBS=OFF -DGGML_NATIVE=$NATIVE -DLLAMA_BUILD_MTMD=ON \
@@ -77,7 +85,11 @@ if [[ "$(uname)" == Darwin ]]; then
 else
   # `ar` has no libtool-style merge: an MRI script does it. Member names repeat between the parts, so thin-archive
   # extraction isn't safe; ADDLIB copies each member in.
-  rm -f "$OUT/lib/libllamacpp.a"
+  rm -f "$OUT/lib/libllamacpp.a" "$OUT/lib/VULKAN"
+  if [[ $VULKAN == ON ]]; then
+    PARTS+=($B/ggml/src/ggml-vulkan/libggml-vulkan.a)
+    touch "$OUT/lib/VULKAN"   # Package.swift links libvulkan when this is there
+  fi
   { echo "create $OUT/lib/libllamacpp.a"
     for part in "${PARTS[@]}"; do echo "addlib $part"; done
     echo save; echo end; } | ar -M

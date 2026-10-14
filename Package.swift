@@ -1,4 +1,5 @@
 // swift-tools-version: 6.2
+import Foundation
 import PackageDescription
 
 // The Mac app (AppKit + SwiftUI + Sparkle) has no Linux build; the Linux desktop app (GTK 4) has no Mac build. They
@@ -43,6 +44,11 @@ let kitTargets: [Target] = [.systemLibrary(name: "CSQLite", path: "Sources/CSQLi
 let llamaModule = "Sources/CLlamaLinux"
 #endif
 
+// scripts/build-llama.sh leaves Vendor/llama/lib/VULKAN when it built llama.cpp with Vulkan (Linux only).
+let llamaGPU: [LinkerSetting] =
+    FileManager.default.fileExists(atPath: Context.packageDirectory + "/Vendor/llama/lib/VULKAN")
+    ? [.linkedLibrary("vulkan", .when(platforms: [.linux]))] : []
+
 let package = Package(
     name: "DigUp",
     platforms: [.macOS(.v14)],
@@ -63,7 +69,7 @@ let package = Package(
         .target(
             name: "LlamaRuntime",
             dependencies: ["CLlama", "DigUpKit"],
-            linkerSettings: [.unsafeFlags(["-L\(Context.packageDirectory)/Vendor/llama/lib"])]
+            linkerSettings: [.unsafeFlags(["-L\(Context.packageDirectory)/Vendor/llama/lib"])] + llamaGPU
         ),
         // Developer CLI: estimate / index / search / status / eval. Doubles as the eval harness, and the app runs it as
         // its indexing helper and its query encoder.
