@@ -139,6 +139,59 @@ There's also a command-line tool, `.build/release/digup`, that indexes, searches
 (`digup --help`). `scripts/make-testbed.sh` builds a folder of test files to try it on (it needs ffmpeg), and `evals/`
 holds the queries ranking changes are measured with.
 
+## Linux
+
+DigUp also runs on Linux (x86-64 and ARM64, no GPU needed): the same engine, the same index and the same features,
+with a GTK 4 app in place of the Mac's. It's built from source; there's no package yet.
+
+**Dependencies** (Ubuntu 24.04 names; other distributions have the same tools):
+
+```sh
+# build: Swift 6.2 (https://www.swift.org/install/linux/, e.g. with swiftly), and
+sudo apt install cmake libgtk-4-dev libsqlite3-dev libcurl4-openssl-dev
+# reading files: pictures and video, PDFs, text in pictures, documents
+sudo apt install ffmpeg poppler-utils tesseract-ocr tesseract-ocr-eng pandoc catdoc libheif-examples dcraw
+# optional: more OCR languages, playing previews, opening at the page or moment, copying files, a desktop shortcut
+sudo apt install tesseract-ocr-ben tesseract-ocr-ara gstreamer1.0-libav libgtk-4-media-gstreamer mpv evince xclip wl-clipboard
+```
+
+**Build and test:**
+
+```sh
+git clone https://github.com/ARahim3/DigUp && cd DigUp
+scripts/build-llama.sh            # llama.cpp, a plain CPU build (a few minutes)
+swift build -c release && swift test
+./build.sh                        # → build.noindex/linux/: digup, digup-app, digup.desktop
+```
+
+**Run:** `build.noindex/linux/digup-app` opens onboarding the first time (the model download, the folders, the
+shortcut), then the search window. To have it in your applications menu and start it at login:
+
+```sh
+ln -s "$PWD/build.noindex/linux/digup.desktop" ~/.local/share/applications/digup.desktop
+```
+
+and turn on "Open DigUp when you log in" in Settings (it writes `~/.config/autostart/digup.desktop`). One copy runs;
+running `digup-app` again talks to it: `--toggle` shows or hides the search panel, `--window`, `--settings` and
+`--status` open those, `--quit` quits.
+
+**The hotkey.** Linux desktops don't let apps grab a global shortcut the same way, so the shortcut is your desktop's:
+a custom keyboard shortcut that runs `digup-app --toggle`. On GNOME, DigUp sets it up itself (Ctrl+Alt+Space, or
+what you choose in Settings → General). Elsewhere add it by hand: KDE's System Settings → Shortcuts → Custom
+Shortcuts, Xfce's Keyboard → Application Shortcuts, Cinnamon's and MATE's Keyboard Shortcuts, or a `bind` line in your
+window manager's config (Sway: `bindsym Ctrl+Alt+space exec /path/to/digup-app --toggle`). Settings shows the exact
+command.
+
+**Where things are:** the model and the indexes in `~/.local/share/DigUp` (`$XDG_DATA_HOME`), the settings in
+`~/.config/DigUp/settings.plist` (`$XDG_CONFIG_HOME`), the preview pictures in `~/.cache/DigUp`. To remove DigUp,
+quit it and delete those and the build folder (and the launcher links above, and GNOME's "DigUp" shortcut).
+
+**What's different:** GTK 4 has no tray, so the status menu (indexing progress, Pause, Settings…) is the ☰ button in
+the search window and `digup-app --status`. Space opens a large preview window rather than Quick Look. Updates are
+checked daily against the same feed, but installed by rebuilding (`git pull && ./build.sh`). Text in pictures is
+read by Tesseract instead of Apple's text recognition, and indexing runs on the CPU, so the first pass takes longer
+than on a Mac. LINUX_PORT_NOTES.md has the details.
+
 ## FAQ
 
 **How is this different from Spotlight?** Spotlight finds files by their names, text and metadata. DigUp also finds
