@@ -107,7 +107,11 @@ struct Arguments {
         return try positional.map {
             let url = Self.folderURL($0)
             guard Self.isFolder(url) else { throw CLIError("not a folder: \($0)") }
+            #if os(macOS)
+            guard Self.isReadable(url) else { throw CLIError("can't read \($0) (macOS privacy settings?)") }
+            #else
             guard Self.isReadable(url) else { throw CLIError("can't read \($0)") }
+            #endif
             return url
         }
     }

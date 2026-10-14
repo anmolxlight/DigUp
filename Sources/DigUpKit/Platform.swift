@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(UniformTypeIdentifiers)
+import UniformTypeIdentifiers
+#endif
 
 /// Where DigUp keeps its things. The Mac uses Application Support; Linux follows the XDG base directory spec.
 public enum AppPaths {

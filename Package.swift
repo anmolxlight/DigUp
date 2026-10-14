@@ -5,10 +5,6 @@ import PackageDescription
 // Everything below them — the engine, llama.cpp and the CLI — is shared.
 #if os(macOS)
 let appProducts: [Product] = [.executable(name: "DigUpApp", targets: ["DigUpApp"])]
-let appDependencies: [Package.Dependency] = [
-    // In-app updates (the app only). build.sh embeds the framework in Contents/Frameworks and signs it.
-    .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.0"),
-]
 let appTargets: [Target] = [
     // The menubar + hotkey app. build.sh wraps it into build.noindex/DigUp.app. (The product can't be called
     // "DigUp": on a case-insensitive disk it would collide with the `digup` CLI binary.)
@@ -24,7 +20,6 @@ let kitTargets: [Target] = []
 let llamaModule = "Sources/CLlama"
 #else
 let appProducts: [Product] = []
-let appDependencies: [Package.Dependency] = []
 let appTargets: [Target] = []
 // Linux has no SQLite3 module in its SDK: the system libsqlite3 comes in through Sources/CSQLite.
 let kitDependencies: [Target.Dependency] = ["CSQLite"]
@@ -39,7 +34,11 @@ let package = Package(
         .executable(name: "digup", targets: ["digup"]),
         .library(name: "DigUpKit", targets: ["DigUpKit"]),
     ] + appProducts,
-    dependencies: appDependencies,
+    dependencies: [
+        // In-app updates (the Mac app only). build.sh embeds the framework in Contents/Frameworks and signs it.
+        // Declared on Linux too, unused there, so SwiftPM there keeps Package.resolved's pin instead of deleting it.
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.0"),
+    ],
     targets: [
         // The engine: crawler, extractors, index store, the embedder interface and worker client, search. No UI.
         .target(name: "DigUpKit", dependencies: kitDependencies),

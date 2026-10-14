@@ -244,10 +244,15 @@ enum DocExtractor {
 
     /// Splits text into ~`size`-character pieces (~450 tokens) that overlap a little, breaking at whitespace.
     static func chunks(_ text: String, size: Int = 1800, overlap: Int = 200, limit: Int) -> [String] {
+        // On Linux the no-break space goes in as the character itself: "\u{00A0}" inside the pattern is a Swift
+        // escape ICU doesn't know, and Linux's regex engine rejects the whole pattern over it. The Mac keeps its own.
+        #if os(macOS)
+        let spaces = #"[ \t\u{00A0}]+"#
+        #else
+        let spaces = "[ \\t\u{00A0}]+"
+        #endif
         let clean = text
-            // The no-break space goes in as the character itself: "\u{00A0}" inside the pattern is a Swift escape
-            // ICU doesn't know, and Linux's regex engine rejects the whole pattern over it (macOS lets it pass).
-            .replacingOccurrences(of: "[ \\t\u{00A0}]+", with: " ", options: .regularExpression)
+            .replacingOccurrences(of: spaces, with: " ", options: .regularExpression)
             .replacingOccurrences(of: #"\n\s*\n\s*\n+"#, with: "\n\n", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         var chunks: [String] = []
