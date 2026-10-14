@@ -164,6 +164,12 @@ final class SearchWindowController {
         app.windowClosed()
     }
 
+    private func trackHome() {
+        _ = app.model.status.files
+        if app.model.settings.roots.isEmpty { _ = 0 }
+        DispatchQueue.main.async { MainActor.assumeIsolated { self.refreshHome() } }
+    }
+
     private func makeWindow() -> Widget {
         let window = DigUpLinux.window("DigUp", width: 1040, height: 700)
         size(window, width: 820, height: 520)
@@ -242,9 +248,7 @@ final class SearchWindowController {
         watch { [weak self] in
             // The home view's counts follow the index.
             guard let self else { return }
-            _ = app.model.status.files
-            _ = app.model.settings.roots
-            DispatchQueue.main.async { self.refreshHome() }
+            self.trackHome()
         }
         self.window = window
         render()

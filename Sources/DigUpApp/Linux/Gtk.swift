@@ -45,7 +45,7 @@ private nonisolated func connect<F>(_ object: UnsafeMutableRawPointer, _ signal:
     g_signal_connect_data(object, signal, callback, data, { data, _ in
         guard let data else { return }
         Unmanaged<AnyObject>.fromOpaque(data).release()
-    }, after ? G_CONNECT_AFTER : GConnectFlags(rawValue: 0))
+    }, GConnectFlags(rawValue: after ? 1 : 0))
 }
 
 private nonisolated func handler<F>(_ data: gpointer?) -> F {

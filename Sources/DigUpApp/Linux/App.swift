@@ -21,7 +21,7 @@ enum DigUpMain {
         setlocale(LC_ALL, "")
         let suite = UserDefaults.standard.string(forKey: "defaultsSuite")
         let id = "io.github.arahim3.DigUp" + (suite.map { "." + $0.filter { $0.isLetter || $0.isNumber } } ?? "")
-        let application = gtk_application_new(id, G_APPLICATION_HANDLES_COMMAND_LINE)!
+        let application = gtk_application_new(id, GApplicationFlags(rawValue: 8))!
         DigUpGtk.application = application
         onCommandLine(application) { arguments in
             handle(arguments)
