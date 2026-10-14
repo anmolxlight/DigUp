@@ -74,6 +74,27 @@ final class AppController {
             if !download.isReady { download.start() }
             if showWindow { showSearchWindow() }
         }
+        // Drives connecting and going (NSWorkspace's mount notifications on a Mac): GIO's volume monitor.
+        let monitor = g_volume_monitor_get()!
+        for signal in ["mount-added", "mount-removed"] {
+            on(monitor, signal) { [weak self] mount in
+                guard let mount, let root = g_mount_get_root(OpaquePointer(mount)) else { return }
+                defer { unref(root) }
+                guard let path = g_file_get_path(root) else { return }
+                defer { g_free(path) }
+                self?.volumeChanged(String(cString: path))
+            }
+        }
+    }
+
+    /// A drive was connected or ejected: only a chosen folder on it (or one that's missing) is of interest.
+    private func volumeChanged(_ volume: String) {
+        let prefix = volume.hasSuffix("/") ? volume : volume + "/"
+        let affected = model.settings.roots.contains { $0.path == volume || $0.path.hasPrefix(prefix) }
+            || !model.status.missingRoots.isEmpty
+        guard affected else { return }
+        log("volume: \(volume) came or went")
+        engine.volumesChanged()
     }
 
     /// The hotkey's command (`digup-app --toggle`): the panel, or onboarding's "try it now".
