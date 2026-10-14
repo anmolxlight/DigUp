@@ -1,4 +1,8 @@
+#if canImport(AppKit)
 import AppKit
+#else
+import Foundation
+#endif
 import Observation
 
 /// State the menubar, the panel and the windows share. Engine updates arrive on the main thread.

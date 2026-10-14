@@ -1,7 +1,8 @@
 // swift-tools-version: 6.2
 import PackageDescription
 
-// The Mac app (AppKit + SwiftUI + Sparkle) has no Linux build; the Linux desktop app (GTK 4) has no Mac build.
+// The Mac app (AppKit + SwiftUI + Sparkle) has no Linux build; the Linux desktop app (GTK 4) has no Mac build. They
+// share the app's UI-free files (the engine host, settings, the model download, estimates…).
 // Everything below them — the engine, llama.cpp and the CLI — is shared.
 #if os(macOS)
 let appProducts: [Product] = [.executable(name: "DigUpApp", targets: ["DigUpApp"])]
@@ -11,6 +12,7 @@ let appTargets: [Target] = [
     .executableTarget(
         name: "DigUpApp",
         dependencies: ["DigUpKit", .product(name: "Sparkle", package: "Sparkle")],
+        exclude: ["Linux"],
         swiftSettings: [.defaultIsolation(MainActor.self)],
         linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
     ),
@@ -19,8 +21,22 @@ let kitDependencies: [Target.Dependency] = []
 let kitTargets: [Target] = []
 let llamaModule = "Sources/CLlama"
 #else
-let appProducts: [Product] = []
-let appTargets: [Target] = []
+let appProducts: [Product] = [.executable(name: "digup-app", targets: ["DigUpLinux"])]
+let appTargets: [Target] = [
+    // GTK 4, the system's (libgtk-4-dev).
+    .systemLibrary(name: "CGtk", path: "Sources/CGtk", pkgConfig: "gtk4", providers: [.apt(["libgtk-4-dev"])]),
+    // The Linux desktop app: the Mac app's UI-free files as they are, and a GTK view layer (Sources/DigUpApp/Linux)
+    // in place of AppKit and SwiftUI. scripts/build-linux.sh puts it next to `digup` as `digup-app`.
+    .executableTarget(
+        name: "DigUpLinux",
+        dependencies: ["DigUpKit", "CGtk"],
+        path: "Sources/DigUpApp",
+        sources: ["AppLog.swift", "AppModel.swift", "AppSettings.swift", "CodeFolders.swift", "Engine.swift",
+                  "Estimates.swift", "FolderChoices.swift", "ModelDownload.swift", "PowerPolicy.swift", "Results.swift",
+                  "Linux"],
+        swiftSettings: [.defaultIsolation(MainActor.self)]
+    ),
+]
 // Linux has no SQLite3 module in its SDK: the system libsqlite3 comes in through Sources/CSQLite.
 let kitDependencies: [Target.Dependency] = ["CSQLite"]
 let kitTargets: [Target] = [.systemLibrary(name: "CSQLite", path: "Sources/CSQLite")]

@@ -1,0 +1,5 @@
+// GTK 4 for the Linux app (Sources/DigUpApp/Linux), plus the few things Swift can't reach in C macros.
+module CGtk [system] {
+    header "shim.h"
+    export *
+}

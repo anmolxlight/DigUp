@@ -1,5 +1,8 @@
 import DigUpKit
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 import Observation
 
 /// Gets the model onto this Mac: ggml-org's two Q8_0 files from Hugging Face (865 MB), the text part first.
@@ -99,10 +102,12 @@ final class ModelDownload {
         }
         do {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            #if os(macOS)
             var values = URLResourceValues()
             values.isExcludedFromBackup = true
             var folder = self.folder
             try folder.setResourceValues(values)
+            #endif
         } catch {
             phase = .failed("Can't create \(tildePath(folder.path))")
             log("model: can't create \(folder.path): \(error)")
@@ -263,8 +268,14 @@ final class ModelDownload {
         while !FileManager.default.fileExists(atPath: url.path), url.pathComponents.count > 1 {
             url.deleteLastPathComponent()
         }
+        #if os(macOS)
         return try? url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
             .volumeAvailableCapacityForImportantUsage
+        #else
+        var info = statvfs()
+        guard statvfs(url.path, &info) == 0 else { return nil }
+        return Int64(info.f_bavail) * Int64(info.f_frsize)
+        #endif
     }
 }
 
@@ -316,7 +327,9 @@ nonisolated final class FileFetcher: NSObject, URLSessionDataDelegate, @unchecke
         }
         if written == file.bytes { return done(.downloaded(partial)) }
         let configuration = URLSessionConfiguration.ephemeral
+        #if os(macOS)
         configuration.waitsForConnectivity = true        // offline: wait for the network instead of failing
+        #endif
         configuration.timeoutIntervalForRequest = 60     // no bytes for a minute: fail, then retry from here
         configuration.timeoutIntervalForResource = 7 * 24 * 3600
         configuration.urlCache = nil

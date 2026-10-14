@@ -39,10 +39,15 @@ nonisolated struct AppSettings: Sendable {
     /// The code index catches up once the code folders have been quiet this long (`-codeQuietSeconds`, default 60).
     var codeQuietSeconds: Double
 
-    static let supportDirectory = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Application Support/DigUp")
+    /// ~/Library/Application Support/DigUp on a Mac, ~/.local/share/DigUp on Linux.
+    static let supportDirectory = AppPaths.support
     static let defaultIndexDirectory = supportDirectory.appendingPathComponent("index.noindex")
+    #if os(macOS)
     static let defaultHotkey = "cmd+shift+space"
+    #else
+    // Super+Space switches input sources on GNOME; Ctrl+Alt+Space is free on the common desktops.
+    static let defaultHotkey = "ctrl+alt+space"
+    #endif
 
     /// The battery switch, in onboarding and Settings.
     static let batteryTitle = "Index on battery power"
@@ -51,7 +56,14 @@ nonisolated struct AppSettings: Sendable {
     /// Where settings are saved. Reads see launch arguments first either way. (UserDefaults is thread-safe.)
     nonisolated(unsafe) static let defaults: UserDefaults = {
         guard let suite = UserDefaults.standard.string(forKey: "defaultsSuite"), !suite.isEmpty,
-              let defaults = UserDefaults(suiteName: suite) else { return .standard }
+              let defaults = UserDefaults(suiteName: suite) else {
+            #if os(Linux)
+            // $XDG_CONFIG_HOME/DigUp/settings.plist: Foundation keeps a suite there. Launch arguments still win.
+            return UserDefaults(suiteName: "DigUp/settings") ?? .standard
+            #else
+            return .standard
+            #endif
+        }
         return defaults
     }()
 
@@ -138,5 +150,10 @@ nonisolated struct AppSettings: Sendable {
 
 /// "~/DigUpTestbed/real" instead of "/Users/…/DigUpTestbed/real".
 nonisolated func tildePath(_ path: String) -> String {
+    #if os(macOS)
     (path as NSString).abbreviatingWithTildeInPath
+    #else
+    let home = FileManager.default.homeDirectoryForCurrentUser.path
+    return path == home || path.hasPrefix(home + "/") ? "~" + path.dropFirst(home.count) : path
+    #endif
 }

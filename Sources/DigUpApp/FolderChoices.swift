@@ -1,7 +1,12 @@
+#if canImport(AppKit)
 import AppKit
+#endif
 import DigUpKit
+import Foundation
 import Observation
+#if canImport(SwiftUI)
 import SwiftUI
+#endif
 
 /// The folder list onboarding and Settings share: folders with what's in them and how long their first pass takes,
 /// each with its subfolders one level down (biggest first), and what's chosen and skipped (`FolderSelection`). A
@@ -217,7 +222,9 @@ final class FolderChoices {
     }
 }
 
-// MARK: Views
+// MARK: Views (the Linux app draws these with GTK: Linux/Folders.swift)
+
+#if canImport(SwiftUI)
 
 /// The folders, each with a checkbox, what's in it and how long its first pass takes, opening to its subfolders; then
 /// a button that adds another folder, and a note when a folder picked didn't change anything.
@@ -456,3 +463,4 @@ struct Checkbox: NSViewRepresentable {
         }
     }
 }
+#endif

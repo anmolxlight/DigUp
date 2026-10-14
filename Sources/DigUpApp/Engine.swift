@@ -463,7 +463,7 @@ nonisolated final class Engine: @unchecked Sendable {
             return
         }
         let process = Process()
-        process.executableURL = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/digup")
+        process.executableURL = helperURL
         var arguments = ["index-service", "--index", indexDirectory.path]
         if backfill { arguments.append("--backfill") }
         if pruneWanted { arguments.append("--prune") }
@@ -918,7 +918,7 @@ nonisolated final class Engine: @unchecked Sendable {
         let started = Date()
         do {
             // The bundled helper runs the model (`digup worker`); DIGUP_WORKER_DIR swaps in another worker.
-            var config = python ?? .helper(Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/digup"))
+            var config = python ?? .helper(helperURL)
             config.environment["DIGUP_MODELS"] = modelsDirectory.path
             config.log = indexDirectory.appendingPathComponent("worker-query.log")
             config.qos = .userInitiated
@@ -991,5 +991,19 @@ nonisolated struct QueryVectorCache {
 /// Hands pages that malloc has freed back to the OS. A crawl or an indexing batch leaves megabytes of freed but still
 /// dirty pages, which count against the app's footprint until something else asks for memory.
 nonisolated func returnFreedMemory() {
+    #if os(macOS)
     malloc_zone_pressure_relief(nil, 0)
+    #else
+    malloc_trim(0)
+    #endif
+}
+
+/// The `digup` helper the app runs to index, estimate and encode queries: in the bundle's Helpers on a Mac, next to
+/// the app's own binary on Linux (`build.noindex/linux/`).
+nonisolated var helperURL: URL {
+    #if os(macOS)
+    Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/digup")
+    #else
+    Bundle.main.bundleURL.appendingPathComponent("digup")
+    #endif
 }

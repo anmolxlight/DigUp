@@ -21,11 +21,19 @@ Host it was built and run on: Ubuntu 24.04, aarch64, 2 cores, no GPU, no display
 | `NSAttributedString` doc/rtf/odt/docx | pandoc; the old binary `.doc` goes through catdoc |
 | UniformTypeIdentifiers | `UTTypeLinux.swift`: extension tables for pdf/image/movie/audio/source/script |
 | CoreServices (Spotlight `MDItem`) | pdfinfo and ffprobe read the page count and duration straight from the file |
-| FSEvents | inotify (`FolderWatcherLinux.swift`) |
+| FSEvents | inotify (`Sources/DigUpApp/Linux/FolderWatcher.swift`) |
 | iCloud placeholder checks | no-op: Linux has no dataless files |
 | `~/Library/Application Support/DigUp` | `$XDG_DATA_HOME/DigUp` (`~/.local/share/DigUp`) |
-| settings in `com.abdurrahim.DigUp.plist` | `$XDG_CONFIG_HOME/DigUp/settings.json` |
-| AppKit + SwiftUI + Sparkle | GTK 4 through a C shim (`Sources/CGtk`, `Sources/GtkShim`) |
+| settings in `com.abdurrahim.DigUp.plist` | `$XDG_CONFIG_HOME/DigUp/settings.plist` (a Foundation defaults suite) |
+| AppKit + SwiftUI | GTK 4, called from Swift (`Sources/CGtk` is the module map plus a few C helpers for macros) |
+| Sparkle | a daily read of the same appcast; a newer version waits in the menu and opens its release page |
+| Carbon hotkey | the desktop's own custom shortcut running `digup-app --toggle` (set up automatically on GNOME) |
+| menubar status item | the search window's ☰ menu and `digup-app --status` (GTK 4 has no tray) |
+| Quick Look | a big preview window (Space), the same preview the panel shows |
+| NSWorkspace open / reveal / pasteboard | `xdg-open`, `org.freedesktop.FileManager1.ShowItems`, `wl-copy`/`xclip` (text/uri-list) |
+| QuickTime/IINA at a moment, Preview at a page | `mpv --start` / `vlc --start-time`, `evince --page-index` / `okular -p` |
+| SMAppService login item | `~/.config/autostart/digup.desktop` |
+| IOKit power source, thermal state, Low Power Mode | `/sys/class/power_supply`, none, power-profiles-daemon's Power Saver (read once a minute) |
 
 ## Decisions worth knowing about
 

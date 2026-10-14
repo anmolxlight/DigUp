@@ -31,7 +31,7 @@ enum Estimates {
     static func run(_ folders: [URL], excluded: [URL] = [], types: [String] = [], code: Bool = false,
                     update: @escaping @MainActor @Sendable (FolderEstimate) -> Void) {
         let process = Process()
-        process.executableURL = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/digup")
+        process.executableURL = helperURL
         var arguments = ["estimate", "--json"]
         if code { arguments.append("--code") }
         for folder in excluded { arguments += ["--exclude", folder.path] }
