@@ -58,9 +58,10 @@ extension AudioExtractor {
 }
 
 extension VideoExtractor {
-    /// Samples a frame every `interval` seconds and keeps one per shot, exactly as the Mac does: ffmpeg's `fps` filter
-    /// picks the frames, `showinfo` reports the time each one really sits at, and a second branch of the same pass
-    /// writes each frame as 8×8 grey so the average hashes cost no extra decoding.
+    /// Samples a frame every `interval` seconds and keeps one per shot, exactly as the Mac does: ffmpeg's `select`
+    /// filter picks the frames (keeping their own timestamps: `fps` would report them on its grid, half a second
+    /// before the frame it took), `showinfo` reports the time each one really sits at, and a second branch of the
+    /// same pass writes each frame as 8×8 grey so the average hashes cost no extra decoding.
     static func keyframes(of url: URL, every interval: Double, maxPixel: Int, maxFrames: Int = 1200, to folder: URL)
         async throws -> (frames: [MediaPiece], duration: Double, hasAudio: Bool) {
         let probe = MediaInfo.probe(url)
@@ -74,7 +75,8 @@ extension VideoExtractor {
         defer { try? FileManager.default.removeItem(at: sampled) }
         let hashes = sampled.appendingPathComponent("hashes.gray")
         let filter = """
-            [0:v]fps=fps=\(1 / step):start_time=\(start),showinfo,split=2[full][tiny];\
+            [0:v]select='isnan(prev_selected_t)*gte(t,\(start))+gte(t-prev_selected_t,\(step))',showinfo,\
+            split=2[full][tiny];\
             [full]scale=w='min(\(maxPixel),iw)':h='min(\(maxPixel),ih)':force_original_aspect_ratio=decrease[out];\
             [tiny]scale=8:8,format=gray[hash]
             """

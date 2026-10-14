@@ -141,8 +141,8 @@ holds the queries ranking changes are measured with.
 
 ## Linux
 
-DigUp also runs on Linux (x86-64 and ARM64, no GPU needed): the same engine, the same index and the same features,
-with a GTK 4 app in place of the Mac's. It's built from source; there's no package yet.
+DigUp also runs on Linux (no GPU needed; tested on ARM64 Ubuntu 24.04): the same engine, the same index and the
+same features, with a GTK 4 app in place of the Mac's. It's built from source; there's no package yet.
 
 **Dependencies** (Ubuntu 24.04 names; other distributions have the same tools):
 

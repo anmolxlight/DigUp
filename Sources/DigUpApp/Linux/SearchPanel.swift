@@ -99,6 +99,7 @@ final class SearchPanelController {
     }
 
     func hide() {
+        if isVisible { log("panel: hidden") }
         QuickLook.shared.close()
         if let window { gtk_widget_set_visible(window, 0) }
         PreviewPlayback.shared.stop()
@@ -356,6 +357,7 @@ final class SearchPanelController {
             if gtk_window_is_active(cast(window)) != 0 {
                 wasActive = true
             } else if wasActive, !QuickLook.shared.isVisible, isVisible {
+                log("panel: another window came forward")
                 hide()
             }
         }

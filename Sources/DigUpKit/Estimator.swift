@@ -16,7 +16,20 @@ public struct Costs: Sendable {
     public var videoSecond = 0.019       // a 70-token keyframe per shot (at most one per 3 s) + the soundtrack
     /// A stretch of code (2026-10-09: 258 Swift and Objective-C files, 1,245 stretches in 45 s with the model's start).
     public var codeStretch = 0.037
-    public init() {}
+    public init() {
+        #if os(Linux)
+        // No Metal: llama.cpp on the CPU, tesseract for OCR. Measured 2026-10-14 indexing the testbed on a 2-core
+        // Neoverse N1 (a native build, both cores): 83 files in 22.5 min, code 40 stretches in 84 s. Machines with
+        // more cores are faster, so these err on the long side.
+        image = 1.4
+        screenshot = 4.5
+        pdfPage = 1.5
+        docChunk = 3.0
+        audioSecond = 0.57
+        videoSecond = 0.65
+        codeStretch = 2.0
+        #endif
+    }
 }
 
 /// How big the code index gets: its words (keyword search keeps the text, ~2.4 bytes of index a character of code)

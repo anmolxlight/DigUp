@@ -62,10 +62,13 @@ enum Pictures {
                        "-qscale:v", "4", out.path])
     }
 
-    /// The frame at `seconds` (a fast seek, to the frame just before).
+    /// The frame at `seconds`: a fast seek, except in MPEG transport streams (.ts, .mts, .m2ts), where ffmpeg's seek
+    /// can land seconds off, so it decodes up to the moment instead.
     private nonisolated static func frame(_ url: URL, at seconds: Double, side: Int, to out: URL) -> Bool {
-        run("ffmpeg", ["-nostdin", "-loglevel", "error", "-y", "-ss", String(format: "%.2f", max(0, seconds)),
-                       "-i", url.path, "-frames:v", "1", "-vf", fit(side), "-qscale:v", "4", out.path])
+        let at = ["-ss", String(format: "%.2f", max(0, seconds))]
+        let exact = ["ts", "mts", "m2ts"].contains(url.pathExtension.lowercased())
+        return run("ffmpeg", ["-nostdin", "-loglevel", "error", "-y"] + (exact ? [] : at) + ["-i", url.path]
+                   + (exact ? at : []) + ["-frames:v", "1", "-vf", fit(side), "-qscale:v", "4", out.path])
     }
 
     /// Page `number`, fitted into `side` pixels; with `words`, the band around the first of them (as wide as the
