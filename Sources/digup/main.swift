@@ -538,7 +538,14 @@ do {
     case "search": try search(args)
     case "status": try status(args)
     case "eval": try evaluate(args)
-    case "index-service": exit(try indexService(args))
+    case "index-service":
+        #if os(Linux)
+        // glibc's exit() takes stdin's lock to tidy up stdio, and the command reader holds it while it waits for a
+        // line: the helper would never end. Its events go straight to the file descriptor, so nothing is left to tidy.
+        _exit(try indexService(args))
+        #else
+        exit(try indexService(args))
+        #endif
     case "worker": exit(workerService(args))
     default:
         print(usage)
