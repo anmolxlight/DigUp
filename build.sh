@@ -6,11 +6,15 @@
 #   SIGN_ID="<identity>" ./build.sh  this identity instead
 #   RELEASE=1 SIGN_ID="Developer ID Application: …" ./build.sh   plus the secure timestamp notarization needs
 #                                    (scripts/release.sh does that, then notarizes and makes the DMG)
-# There's no install step: run it from build.noindex (see scripts/dev-run.sh).
+# There's no install step: run it from build.noindex (see scripts/dev-run.sh). On Linux this runs
+# scripts/build-linux.sh instead, which builds build.noindex/linux/.
 # For testing in-app updates with a copy of its own (never the installed DigUp's settings or updates), these replace
 # Info.plist values: BUNDLE_ID, VERSION, BUILD_NUMBER, SPARKLE_FEED (the appcast URL), SPARKLE_KEY (the EdDSA public key).
 set -euo pipefail
 cd "$(dirname "$0")"
+
+# On Linux there's no .app: the CLI and the GTK app go into build.noindex/linux (scripts/build-linux.sh).
+[[ "$(uname)" == Linux ]] && exec scripts/build-linux.sh
 
 APP_NAME="DigUp"
 # ".noindex" keeps Spotlight (and the Apps list) from showing this staging copy.
